@@ -1,3 +1,3 @@
 # Replication Material
 
-This repository hosts the data and R codes for the paper "Iterated and Direct Multi-Step Smooth Transition Autoregressive Point and Interval Forecasts of Commodity Prices." 
+This repository hosts the data and R codes for the paper "A Comparison of Direct and Iterated Multistep Smooth Transition Autoregressive Methods for Forecasting Commodity Prices." 

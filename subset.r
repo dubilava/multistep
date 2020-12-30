@@ -162,6 +162,7 @@ for(k in 1:c.num){
 }
 
 sub_dt <- select_dt[n==1 & t==0 & s==0 & p<=6]
+sub_dt <- sub_dt[order(sub_dt$c)]
 
 cols <- sub_dt$c
 cols <- cols[order(cols)]
@@ -169,4 +170,4 @@ cols <- cols[order(cols)]
 subset_dt <- prices_dt[,..cols]
 subset_dt$DATE <- prices_dt$DATE
 
-save(subset_dt,file="subset.RData")
+save(subset_dt,sub_dt,file="subset.RData")
