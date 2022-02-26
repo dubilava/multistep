@@ -15,272 +15,364 @@ source("startest.r")
 source("lstar.r")
 source("estar.r")
 
-## load the data
-load("subset.RData")
-load("select.RData")
+ar_order <- function(x,max_lag=12,method="SIC",bg=TRUE){
+  ic_func <- function(i){# optimal lag based on (A/S)IC
+    fmla <- as.formula(paste("x~",paste0("x",c(1:i),collapse="+")))
+    reg <- lm(fmla,data=d)
+    if(method=="SIC"){
+      log(crossprod(reg$resid))+log(nrow(d))*length(reg$coefficients)/nrow(d)
+    }else{
+      log(crossprod(reg$resid))+2*length(reg$coefficients)/nrow(d)
+    }
+  }
+  bg_func <- function(i){# Breusch-Godfrey
+    fmla <- as.formula(paste("x~",paste0("x",c(1:i),collapse="+")))
+    as.numeric(bgtest(lm(fmla,data=d))[4])
+  }
+  d <- data.table(x=as.numeric(x))
+  d <- d[,paste0("x",c(1:max_lag)) := shift(x,n=1:max_lag,fill=NA,type="lag")]
+  d <- d[complete.cases(d)]
+  ic_vec <- sapply(c(1:max_lag),ic_func)
+  opt_lag <- which.min(ic_vec)
+  if(bg){
+    bg_vec1 <- sapply(c(opt_lag:1),bg_func)
+    if(!is.na(which(bg_vec1 < .05)[1])){
+      opt_lag <- opt_lag-which(bg_vec1 < .05)[1]+2
+    }
+    bg_vec2 <- sapply(c(opt_lag:max_lag),bg_func)
+    if(!is.na(which(bg_vec2 < .05)[1])){
+      if(which(bg_vec2 < .05)[1]==1){
+        opt_lag <- opt_lag+sort(unlist(lapply(split(which(bg_vec2 < .05),cumsum(c(1,diff(which(bg_vec2 < .05)))!=1)),max),use.names=F))[1]
+      }
+    }
+  }
+  p <- ifelse(p<=max_lag,opt_lag,max_lag)
+  return(p)
+}
 
-c.num <- ncol(subset_dt)-1
+
+arh_order <- function(x,h,max_lag=12,method="SIC",bg=TRUE){
+  ic_func <- function(i){# optimal lag based on (A/S)IC
+    fmla <- as.formula(paste("x~",paste0("x",c((j+1):(j+i)),collapse="+")))
+    reg <- lm(fmla,data=d)
+    if(method=="SIC"){
+      log(crossprod(reg$resid))+log(nrow(d))*length(reg$coefficients)/nrow(d)
+    }else{
+      log(crossprod(reg$resid))+2*length(reg$coefficients)/nrow(d)
+    }
+  }
+  bg_func <- function(i){# Breusch-Godfrey
+    fmla <- as.formula(paste("x~",paste0("x",c((j+1):(j+i)),collapse="+")))
+    as.numeric(bgtest(lm(fmla,data=d))[4])
+  }
+  j <- h-1
+  d <- data.table(x=as.numeric(x))
+  d <- d[,paste0("x",c((j+1):(j+max_lag))) := shift(x,n=(j+1):(j+max_lag),fill=NA,type="lag")]
+  d <- d[complete.cases(d)]
+  ic_vec <- sapply(c(1:max_lag),ic_func)
+  opt_lag <- which.min(ic_vec)
+  if(bg){
+    bg_vec1 <- sapply(c(opt_lag:1),bg_func)
+    if(!is.na(which(bg_vec1 < .05)[1])){
+      opt_lag <- opt_lag-which(bg_vec1 < .05)[1]+2
+    }
+    bg_vec2 <- sapply(c(opt_lag:max_lag),bg_func)
+    if(!is.na(which(bg_vec2 < .05)[1])){
+      if(which(bg_vec2 < .05)[1]==1){
+        opt_lag <- opt_lag+sort(unlist(lapply(split(which(bg_vec2 < .05),cumsum(c(1,diff(which(bg_vec2 < .05)))!=1)),max),use.names=F))[1]
+      }
+    }
+  }
+  p <- ifelse(p<=max_lag,opt_lag,max_lag)
+  return(p)
+}
+
+
+# load the data
+load("subset.RData")
+
+c_num <- ncol(subset_dt)-1
 
 p <- 12
 h <- 12
 
 B <- 5000
 
-frac <- .85
+frac <- .80
 
 # in-sample and out-of-sample periods
-R <- round(frac*nrow(subset_dt))
-P <- nrow(subset_dt)-R-h
+n <- nrow(subset_dt)
+R <- round(frac*n)
+P <- n-R-h+1
 
-# empty array to store: realised values, naive forecasts, iterated and direct
+# empty array to store: realized values, naive forecasts, iterated and direct
 # forecasts from STAR models, iterated and direct forecasts from AR models
-array.forecast <- array(dim=c(h,6,P,c.num))
+array_forecast <- array(dim=c(h,6,P,c_num))
+array_pval <- array(dim=c(h,P,c_num))
+array_order <- array(dim=c(h,P,c_num))
 
-c.names <- as.character(diagnostics_dt$c)
+c_names <- as.character(names(subset_dt)[1:c_num])
 
-for(k in 1:c.num){
+for(k in 1:c_num){
   
-  cmd <- c.names[k]
+  cmd <- c_names[k]
   
   y <- as.matrix(log(subset_dt[,..cmd])) 
   
-  y.lvl <- y 
-  
   res <- array(dim=c(h,6,P))
+  pval <- matrix(nrow=h,ncol=P)
+  lag_order <- matrix(nrow=h,ncol=P)
   
-  # if(diagnostics_dt[c==cmd]$i ==0){
-  #   y.all <- y.lvl
-  #   ord <- diagnostics_dt[c==cmd]$p
-  # }else{
-    y.all <- c(0,diff(y.lvl))
-    ord <- diagnostics_dt[c==cmd]$p-1
-  # }
+  dy <- c(0,diff(y))
   
   
   for(r in 1:P){
     
-    y <- y.all[r:(R+r-1)] # the rolling subset for estimation
+    # the expanding window for estimation
+    w <- y[1:(R-1+r)]
+    dw <- dy[1:(R-1+r)]
     
-    y.realised <- y.lvl[(R+r):(R+r+h-1)] # the out-of-sample realized values
-    y.last <- y.lvl[(R+r-1)]
+    ord_w <- ar_order(w,max_lag=p,method="SIC",bg=F)
     
-    ## random walk forecast
+    y_realised <- y[(R+r):(R+r+h-1)] # the out-of-sample realized values
+    y_last <- y[(R-1+r)]
     
-    y.naive <- rep(y.last,h)
+    # random walk forecast
+    y_naive <- rep(y_last,h)
     
-    #####################
-    ## iterated method ##
-    #####################
+    # iterated method
     
-    ymat <- embed(y,p+h+1)
+    dmat <- embed(dw,p+h+1)
+    lmat <- embed(w,p+h+1)
     
-    y.f <- c(y,rep(NA,h))
+    dy_f <- c(dw,rep(NA,h))
+    y_f <- c(w,rep(NA,h))
     
-    ymat.f <- embed(y.f,p+h+1)
+    dmat_f <- embed(dy_f,p+h+1)
+    lmat_f <- embed(y_f,p+h+1)
     
-    # p.vec[r,] <- ord
+    # linear iterated
     
-    ## LINEAR MODEL
-    
-    est.ar <- lm(ymat[,1]~cbind(ymat[,2:(2+ord-1)]))
-    b <- est.ar$coef
-    
-    e <- est.ar$resid
-    
-    y.boot <- matrix(nrow=h,ncol=B)
-    
-    set.seed(k)
-    e.boot <- matrix(sample(e,h*B,replace=T),nrow=h,ncol=B)
-    
-    for(itnum in 1:B){
-      
-      e.f <- e.boot[,itnum]
-      
-      for(i in 1:h){
-        
-        ymat.f[nrow(ymat)+i,2:(p+1)] <- ymat.f[nrow(ymat)+i-1,1:p]
-        
-        ymat.f[nrow(ymat)+i,1] <- b[1:(ord+1)]%*%c(1,ymat.f[nrow(ymat)+i,2:(ord+1)])+e.f[i]
-        
-      }
-      
-      y.boot[,itnum] <- ymat.f[(nrow(ymat)+1):(nrow(ymat)+h),1]
-      
-    }
-    
-    # if(diagnostics_dt[c==cmd]$i==1){
-      y.boot <- apply(rbind(y.last,y.boot),2,cumsum)[-1,]
-    # }
-    
-    ## point forecasts
-    y.il_mean <- rowMeans(y.boot)
-    
-    
-    ## NONLINEAR MODEL
-    
-    d <- star_lags[k,1]
-    
-    s.t <- ymat[,(d+1)]
-    
-    if(star_func[k,1]=="l"){
-      est.star <- lstar(y=ymat[,1],x.0=cbind(1,ymat[,2:(2+ord-1)]),x.1=cbind(1,ymat[,2:(2+ord-1)]),tv=s.t)
+    if(ord_w>1){
+      est_ar <- lm(dmat[,1]~dmat[,2:ord_w])
     }else{
-      est.star <- estar(y=ymat[,1],x.0=cbind(1,ymat[,2:(2+ord-1)]),x.1=cbind(1,ymat[,2:(2+ord-1)]),tv=s.t)
+      est_ar <- lm(dmat[,1]~1)
     }
     
-    b <- est.star$coef
-    e <- est.star$resid
+    b <- est_ar$coef
+    e <- est_ar$resid
     
-    y.boot <- matrix(nrow=h,ncol=B)
+    y_boot <- matrix(nrow=h,ncol=B)
     
     set.seed(k)
-    e.boot <- matrix(sample(e,h*B,replace=T),nrow=h,ncol=B)
+    e_boot <- matrix(sample(e,h*B,replace=T),nrow=h,ncol=B)
     
     for(itnum in 1:B){
       
-      e.f <- e.boot[,itnum]
+      e_f <- e_boot[,itnum]
       
       for(i in 1:h){
         
-        ymat.f[nrow(ymat)+i,2:(p+1)] <- ymat.f[nrow(ymat)+i-1,1:p]
-        
-        s.f <- ymat.f[nrow(ymat)+i-d,1]
-        
-        if(star_func[k,1]=="l"){
-          g.f <- (1+exp(-b["g1"]*(s.f-b["c1"])/sd(s.t)))^(-1)
+        if(ord_w>1){
+          dmat_f[nrow(dmat)+i,2:ord_w] <- dmat_f[nrow(dmat)+i-1,1:(ord_w-1)]
+          dmat_f[nrow(dmat)+i,1] <- b[1:ord_w]%*%c(1,dmat_f[nrow(dmat)+i,2:ord_w])+e_f[i]
         }else{
-          g.f <- (1-exp(-b["g1"]*((s.f-b["c1"])/sd(s.t))^2))
+          dmat_f[nrow(dmat)+i,1] <- b+e_f[i]
         }
-        
-        ymat.f[nrow(ymat)+i,1] <- b[1:(ord+1)]%*%c(1,ymat.f[nrow(ymat)+i,2:(ord+1)])+(b[(ord+1+1):((ord+1)*2)]%*%c(1,ymat.f[nrow(ymat)+i,2:(ord+1)]))*g.f+e.f[i]
         
       }
       
-      y.boot[,itnum] <- ymat.f[(nrow(ymat)+1):(nrow(ymat)+h),1]
+      y_boot[,itnum] <- dmat_f[(nrow(dmat)+1):(nrow(dmat)+h),1]
       
     }
     
-    # if(diagnostics_dt[c==cmd]$i==1){
-      y.boot <- apply(rbind(y.last,y.boot),2,cumsum)[-1,]
-    # }
-    
-    ## point forecasts
-    y.in_mean <- rowMeans(y.boot)
+    y_boot <- apply(rbind(y_last,y_boot),2,cumsum)[-1,]
+
+    y_lin_iter <- rowMeans(y_boot)
     
     
-    ###################
-    ## direct method ##
-    ###################
+    # nonlinear iterated
+    if(ord_w>1){
+      test_nl <- startest(y=dmat[,1],x=cbind(1,dmat[,2:ord_w]),x.n=cbind(1,dmat[,2:ord_w]),tvar=dmat[,2:ord_w],tvar.lag=0,contemp=F,ascending=T)
+    }else{
+      test_nl <- startest(y=dmat[,1],x=rep(1,nrow(dmat)),x.n=rep(1,nrow(dmat)),tvar=dmat[,2],tvar.lag=0,contemp=F,ascending=T)
+    }
     
-    ymat <- embed(y,p+h+1)
+    d <- as.numeric(substr(rownames(test_nl$star)[1],3,4))
     
-    y.f <- c(y,rep(NA,h))
+    s_t <- dmat[,(1+d)]
     
-    ymat.f <- embed(y.f,p+h+1)
+    p_vec <- test_nl$star[1,c("p.3","p.2","p.1")]
+    t_min <- p_vec[which.min(p_vec)]
+    if(which.min(p_vec)==2){
+      tf <- "e"
+    }else{
+      tf <- "l"
+    }
     
-    y.boot <- matrix(nrow=h,ncol=B)
-    y.dlin <- matrix(nrow=h,ncol=B)
+    if(ord_w>1){
+      if(tf=="l"){
+        est_star <- lstar(y=dmat[,1],x.0=cbind(1,dmat[,2:ord_w]),x.1=cbind(1,dmat[,2:ord_w]),tv=s_t)
+      }else{
+        est_star <- estar(y=dmat[,1],x.0=cbind(1,dmat[,2:ord_w]),x.1=cbind(1,dmat[,2:ord_w]),tv=s_t)
+      }
+    }else{
+      if(tf=="l"){
+        est_star <- lstar(y=dmat[,1],x.0=rep(1,nrow(dmat)),x.1=rep(1,nrow(dmat)),tv=s_t)
+      }else{
+        est_star <- estar(y=dmat[,1],x.0=rep(1,nrow(dmat)),x.1=rep(1,nrow(dmat)),tv=s_t)
+      }
+    }
     
-    # if(diagnostics_dt[c==cmd]$i==0){
-    #   
-    #   for(j in 0:(h-1)){
-    #     
-    #     est.ar <- lm(ymat.f[,1]~cbind(ymat.f[,(j+2):(j+2+ord-1)]))
-    #     b <- est.ar$coef
-    #     e <- est.ar$resid
-    #     
-    #     set.seed(k)
-    #     e.boot <- matrix(sample(e,h*B,replace=T),nrow=h,ncol=B)
-    #     e.f <- e.boot[j+1,]
-    #     
-    #     # y.boot[j+1,] <- as.numeric(b[1:(ord+1)]%*%c(1,ymat.f[nrow(ymat),1:ord]))+as.matrix(e.f)
-    #     y.dlin[j+1,] <- as.numeric(b[1:(ord+1)]%*%c(1,ymat.f[nrow(ymat),1:ord]))+as.matrix(e.f)
-    #     
-    #     dd <- star_lags[k,(j+1)]
-    #     
-    #     s.t <- ymat[,2+j+dd-1]
-    #     s.f <- ymat.f[nrow(ymat)+1-dd,1]
-    #     
-    #     if(star_func[k,(j+1)]=="l"){
-    #       est.star <- lstar(y=ymat[,1],x.0=cbind(1,ymat[,(2+j):(2+j+ord-1)]),x.1=cbind(1,ymat[,(2+j):(2+j+ord-1)]),tv=s.t)
-    #       b <- est.star$coef
-    #       g.f <- (1+exp(-b["g1"]*(s.f-b["c1"])/sd(s.t)))^(-1)
-    #     }else{
-    #       est.star <- estar(y=ymat[,1],x.0=cbind(1,ymat[,(2+j):(2+j+ord-1)]),x.1=cbind(1,ymat[,(2+j):(2+j+ord-1)]),tv=s.t)
-    #       b <- est.star$coef
-    #       g.f <- (1-exp(-b["g1"]*((s.f-b["c1"])/sd(s.t))^2))
-    #     }
-    #     
-    #     e <- est.star$resid
-    #     
-    #     set.seed(k)
-    #     e.boot <- matrix(sample(e,h*B,replace=T),nrow=h,ncol=B)
-    #     e.f <- e.boot[j+1,]
-    #     
-    #     y.boot[j+1,] <- as.numeric(b[1:(ord+1)]%*%c(1,ymat.f[nrow(ymat),1:ord])+(b[(ord+1+1):((ord+1)*2)]%*%c(1,ymat.f[nrow(ymat),1:ord]))*g.f)+as.matrix(e.f)
-    #     
-    #   }
-    #   
-    # }else{
+    
+    b <- est_star$coef
+    e <- est_star$resid
+    
+    y_boot <- matrix(nrow=h,ncol=B)
+    
+    set.seed(k)
+    e_boot <- matrix(sample(e,h*B,replace=T),nrow=h,ncol=B)
+    
+    for(itnum in 1:B){
       
-      for(j in 0:(h-1)){
+      e_f <- e_boot[,itnum]
+      
+      for(i in 1:h){
         
-        est.ar <- lm(rowSums(as.matrix(ymat.f[,1:(j+1)]))~cbind(ymat.f[,(j+2):(j+2+ord-1)]))
-        b <- est.ar$coef
-        e <- est.ar$resid
-        
-        set.seed(k)
-        e.boot <- matrix(sample(e,h*B,replace=T),nrow=h,ncol=B)
-        e.f <- e.boot[j+1,]
-        
-        # y.boot[j+1,] <- y.last+as.numeric(b[1:(ord+1)]%*%c(1,ymat.f[nrow(ymat),1:ord]))+as.matrix(e.f)
-        y.dlin[j+1,] <- y.last+as.numeric(b[1:(ord+1)]%*%c(1,ymat.f[nrow(ymat),1:ord]))+as.matrix(e.f)
-        
-        dd <- star_lags[k,(j+1)]
-        
-        s.t <- ymat[,2+j+dd-1]
-        s.f <- ymat.f[nrow(ymat)+1-dd,1]
-        
-        if(star_func[k,(j+1)]=="l"){
-          est.star <- lstar(y=rowSums(as.matrix(ymat[,1:(j+1)])),x.0=cbind(1,ymat[,(2+j):(2+j+ord-1)]),x.1=cbind(1,ymat[,(2+j):(2+j+ord-1)]),tv=s.t)
-          b <- est.star$coef
-          g.f <- (1+exp(-b["g1"]*(s.f-b["c1"])/sd(s.t)))^(-1)
+        if(ord_w>1){
+          dmat_f[nrow(dmat)+i,2:ord_w] <- dmat_f[nrow(dmat)+i-1,1:(ord_w-1)]
+          s_f <- dmat_f[nrow(dmat)+i-d,1]
+          if(tf=="l"){
+            g_f <- (1+exp(-b["g1"]*(s_f-b["c1"])/sd(s_t)))^(-1)
+          }else{
+            g_f <- (1-exp(-b["g1"]*((s_f-b["c1"])/sd(s_t))^2))
+          }
+          dmat_f[nrow(dmat)+i,1] <- b[1:ord_w]%*%c(1,dmat_f[nrow(dmat)+i,2:ord_w])+(b[(ord_w+1):(ord_w*2)]%*%c(1,dmat_f[nrow(dmat)+i,2:ord_w]))*g_f+e_f[i]
         }else{
-          est.star <- estar(y=rowSums(as.matrix(ymat[,1:(j+1)])),x.0=cbind(1,ymat[,(2+j):(2+j+ord-1)]),x.1=cbind(1,ymat[,(2+j):(2+j+ord-1)]),tv=s.t)
-          b <- est.star$coef
-          g.f <- (1-exp(-b["g1"]*((s.f-b["c1"])/sd(s.t))^2))
+          s_f <- dmat_f[nrow(dmat)+i-d,1]
+          if(tf=="l"){
+            g_f <- (1+exp(-b["g1"]*(s_f-b["c1"])/sd(s_t)))^(-1)
+          }else{
+            g_f <- (1-exp(-b["g1"]*((s_f-b["c1"])/sd(s_t))^2))
+          }
+          dmat_f[nrow(dmat)+i,1] <- b[1]+b[2]*g_f+e_f[i]
         }
-        
-        e <- est.star$resid
-        
-        set.seed(k)
-        e.boot <- matrix(sample(e,h*B,replace=T),nrow=h,ncol=B)
-        e.f <- e.boot[j+1,]
-        
-        y.boot[j+1,] <- y.last+as.numeric(b[1:(ord+1)]%*%c(1,ymat.f[nrow(ymat),1:ord])+(b[(ord+1+1):((ord+1)*2)]%*%c(1,ymat.f[nrow(ymat),1:ord]))*g.f)+as.matrix(e.f)
         
       }
       
-    # }
+      y_boot[,itnum] <- dmat_f[(nrow(dmat)+1):(nrow(dmat)+h),1]
+      
+    }
     
-    ## point forecasts
-    y.dl_mean <- rowMeans(y.dlin)
-    y.dn_mean <- rowMeans(y.boot)
+    y_boot <- apply(rbind(y_last,y_boot),2,cumsum)[-1,]
     
-    # if(y.in_mean[1]!=y.dn_mean[1]){
-    #   break
-    # }
+    y_nln_iter <- rowMeans(y_boot)
     
-    # store the forecasts
-    res[,,r] <- cbind(y.realised,y.naive,y.il_mean,y.in_mean,y.dl_mean,y.dn_mean)
+
+    # direct method
+    
+    y_dlin <- matrix(nrow=h,ncol=B)
+    y_dnln <- matrix(nrow=h,ncol=B)
+    
+    for(j in 0:(h-1)){
+      
+      dj <- c(rep(0,j+1),diff(w,j+1))
+      
+      dmat_j <- embed(dj,p+h+1)
+      
+      ord_w <- arh_order(w,j+1,max_lag=p,method="SIC",bg=F)
+      
+      # linear direct
+      if(ord_w>1){
+        est_ar <- lm(dmat_j[,1]~dmat[,(j+2):(j+ord_w)])
+      }else{
+        est_ar <- lm(dmat_j[,1]~1)
+      }
+      b <- est_ar$coef
+      e <- est_ar$resid
+      
+      set.seed(k)
+      e_boot <- matrix(sample(e,h*B,replace=T),nrow=h,ncol=B)
+      e_f <- e_boot[j+1,]
+      
+      if(ord_w>1){
+        y_dlin[j+1,] <- y_last+as.numeric(b%*%c(1,dmat_f[nrow(dmat),1:(ord_w-1)]))+as.matrix(e_f)
+      }else{
+        y_dlin[j+1,] <- y_last+as.numeric(b)+as.matrix(e_f)
+      }
+      
+      # nonlinear direct
+      if(ord_w>1){
+        test_nl <- startest(y=dmat_j[,1],x=cbind(1,dmat[,(j+2):(j+ord_w)]),x.n=cbind(1,dmat[,(j+2):(j+ord_w)]),tvar=dmat[,(j+2):(j+ord_w)],tvar.lag=0,contemp=F,ascending=T)
+      }else{
+        test_nl <- startest(y=dmat_j[,1],x=rep(1,nrow(dmat)),x.n=rep(1,nrow(dmat)),tvar=dmat[,(j+2)],tvar.lag=0,contemp=F,ascending=T)
+      }
+      
+      dd <- as.numeric(substr(rownames(test_nl$star)[1],3,4))
+      
+      s_t <- dmat[,(j+1+dd)]
+      s_f <- dmat[nrow(dmat),dd]
+      
+      p_vec <- test_nl$star[1,c("p.3","p.2","p.1")]
+      t_min <- p_vec[which.min(p_vec)]
+      if(which.min(p_vec)==2){
+        tf <- "e"
+      }else{
+        tf <- "l"
+      }
+      
+      if(ord_w>1){
+        if(tf=="l"){
+          est_star <- lstar(y=dmat_j[,1],x.0=cbind(1,dmat[,(j+2):(j+ord_w)]),x.1=cbind(1,dmat[,(j+2):(j+ord_w)]),tv=s_t)
+          b <- est_star$coef
+          g_f <- (1+exp(-b["g1"]*(s_f-b["c1"])/sd(s_t)))^(-1)
+        }else{
+          est_star <- estar(y=dmat_j[,1],x.0=cbind(1,dmat[,(j+2):(j+ord_w)]),x.1=cbind(1,dmat[,(j+2):(j+ord_w)]),tv=s_t)
+          b <- est_star$coef
+          g_f <- (1-exp(-b["g1"]*((s_f-b["c1"])/sd(s_t))^2))
+        }
+      }else{
+        if(tf=="l"){
+          est_star <- lstar(y=dmat_j[,1],x.0=rep(1,nrow(dmat)),x.1=rep(1,nrow(dmat)),tv=s_t)
+          b <- est_star$coef
+          g_f <- (1+exp(-b["g1"]*(s_f-b["c1"])/sd(s_t)))^(-1)
+        }else{
+          est_star <- estar(y=dmat_j[,1],x.0=rep(1,nrow(dmat)),x.1=rep(1,nrow(dmat)),tv=s_t)
+          b <- est_star$coef
+          g_f <- (1-exp(-b["g1"]*((s_f-b["c1"])/sd(s_t))^2))
+        }
+      }
+      
+      e <- est_star$resid
+      
+      set.seed(k)
+      e_boot <- matrix(sample(e,h*B,replace=T),nrow=h,ncol=B)
+      e_f <- e_boot[j+1,]
+      
+      if(ord_w>1){
+        y_dnln[j+1,] <- y_last+as.numeric(b[1:ord_w]%*%c(1,dmat_f[nrow(dmat),1:(ord_w-1)])+(b[(ord_w+1):(ord_w*2)]%*%c(1,dmat_f[nrow(dmat),1:(ord_w-1)]))*g_f)+as.matrix(e_f)
+      }else{
+        y_dnln[j+1,] <- y_last+as.numeric(b[1]+b[2]*g_f)+as.matrix(e_f)
+      }
+      
+      pval[j+1,r] <- as.numeric(t_min)
+      
+      lag_order[j+1,r] <- ord_w
+      
+    }
+    
+    y_lin_dir <- rowMeans(y_dlin)
+    y_nln_dir <- rowMeans(y_dnln)
+    
+    res[,,r] <- cbind(y_realised,y_naive,y_lin_iter,y_nln_iter,y_lin_dir,y_nln_dir)
     
   }
   
-  array.forecast[,,,k] <- res
+  array_forecast[,,,k] <- res
+  array_pval[,,k] <- pval
+  array_order[,,k] <- lag_order
   print(k)
   
 }
 
-
-save(array.forecast,file="forecast85.RData")
-
+save(array_forecast,array_pval,file="forecast80.RData")

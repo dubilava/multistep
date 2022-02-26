@@ -1,0 +1,26 @@
+Commodity,p,l,d,t
+Bananas,10,1,8,1
+Oranges,9.47,0.53,1.47,0
+Cotton,2,1,1,0
+Rice,3,1,1,0
+Lamb,3.78,0.99,1.99,0
+Hides,3,1,1,0
+Fishmeal,2,0,1,0
+Groundnut Oil,2,1,1,0
+Groundnuts,2,1,1,0
+Olive Oil,2,0,1,0
+Palm Oil,5,1,1,0
+Rapeseed Oil,1,1,1,0
+Soybean Oil,3,1,2,0
+Rubber,2,1,1,0
+Hard Sawnwood,2,0,1,0
+Plywood,2,1,1,1
+Soft Logs,2,1,1,0
+Soft Sawnwood,2.17,1,1,0.17
+Diammonium Phosphate,2,0,1,1
+Urea,3.75,1,1,0
+Aluminum,2,0,1,0
+Gold,1.06,0.94,1,0.4
+Lead,2,0,1,0
+Platinum,2,1,1,0
+Uran,6,0.7,1,1
