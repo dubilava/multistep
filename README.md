@@ -29,3 +29,8 @@ These codes store functions that facilitate testing and estimating of STAR model
 - `startest.r`
 - `lstar.r`
 - `estar.r`
+
+
+## License
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
