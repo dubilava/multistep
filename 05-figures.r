@@ -58,7 +58,7 @@ gg_panel <- ggplot(subset_lg,aes(x=Date,y=log(Price)))+
   theme(axis.title = element_text(size=10),axis.text.x=element_text(size=6,angle=45,hjust=.8),axis.text.y=element_text(size=6),strip.text=element_text(size=6),strip.background=element_blank())
 
 # ggsave("Paper/Prices.eps",gg_panel,width=6.5,height=6.5,units="in",device="eps")
-ggsave("Paper/Prices.png",gg_panel,width=6.5,height=6.5,units="in",device="png")
+# ggsave("Paper/Prices.png",gg_panel,width=6.5,height=6.5,units="in",device="png")
 # ggsave("Presentation/Prices.png",gg_panel,width=6.5,height=4.5,units="in",device="png")
 
 
@@ -88,7 +88,7 @@ gg_forecast <- ggplot(forecast_dt,aes(x=horizon,y=value,color=series,linetype=se
   theme(axis.title = element_text(size=10),axis.text.x=element_text(size=6),axis.text.y=element_text(size=6),strip.text=element_text(size=6),strip.background=element_blank(),legend.position = "top",legend.title=element_blank())
 
 # ggsave("Paper/Forecasts2018.eps",gg_forecast,width=6.5,height=6.5,units="in",device="eps")
-ggsave("Paper/Forecasts2018.png",gg_forecast,width=6.5,height=6.5,units="in",device="png")
+# ggsave("Paper/Forecasts2018.png",gg_forecast,width=6.5,height=6.5,units="in",device="png")
 # ggsave("Presentation/Forecasts2018.png",gg_forecast,width=6.5,height=4.5,units="in",device="png")
 
 

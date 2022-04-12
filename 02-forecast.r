@@ -15,6 +15,7 @@ source("startest.r")
 source("lstar.r")
 source("estar.r")
 
+## see 01-subset.r for the brief description of this function
 ar_order <- function(x,max_lag=12,method="SIC",bg=TRUE){
   ic_func <- function(i){# optimal lag based on (A/S)IC
     fmla <- as.formula(paste("x~",paste0("x",c(1:i),collapse="+")))
@@ -50,7 +51,7 @@ ar_order <- function(x,max_lag=12,method="SIC",bg=TRUE){
   return(p)
 }
 
-
+## the multi-step version of the previous function
 arh_order <- function(x,h,max_lag=12,method="SIC",bg=TRUE){
   ic_func <- function(i){# optimal lag based on (A/S)IC
     fmla <- as.formula(paste("x~",paste0("x",c((j+1):(j+i)),collapse="+")))
@@ -93,12 +94,12 @@ load("subset.RData")
 
 c_num <- ncol(subset_dt)-1
 
-p <- 12
-h <- 12
+p <- 12 # max lag length
+h <- 12 # horizon length
 
-B <- 5000
+B <- 5000 # bootstrap sample size
 
-frac <- .80
+frac <- .8
 
 # in-sample and out-of-sample periods
 n <- nrow(subset_dt)
@@ -151,7 +152,7 @@ for(k in 1:c_num){
     dmat_f <- embed(dy_f,p+h+1)
     lmat_f <- embed(y_f,p+h+1)
     
-    # linear iterated
+    ## linear iterated
     
     if(ord_w>1){
       est_ar <- lm(dmat[,1]~dmat[,2:ord_w])
@@ -191,7 +192,7 @@ for(k in 1:c_num){
     y_lin_iter <- rowMeans(y_boot)
     
     
-    # nonlinear iterated
+    ## nonlinear iterated
     if(ord_w>1){
       test_nl <- startest(y=dmat[,1],x=cbind(1,dmat[,2:ord_w]),x.n=cbind(1,dmat[,2:ord_w]),tvar=dmat[,2:ord_w],tvar.lag=0,contemp=F,ascending=T)
     }else{
@@ -282,7 +283,7 @@ for(k in 1:c_num){
       
       ord_w <- arh_order(w,j+1,max_lag=p,method="SIC",bg=F)
       
-      # linear direct
+      ## linear direct
       if(ord_w>1){
         est_ar <- lm(dmat_j[,1]~dmat[,(j+2):(j+ord_w)])
       }else{
@@ -301,7 +302,7 @@ for(k in 1:c_num){
         y_dlin[j+1,] <- y_last+as.numeric(b)+as.matrix(e_f)
       }
       
-      # nonlinear direct
+      ## nonlinear direct
       if(ord_w>1){
         test_nl <- startest(y=dmat_j[,1],x=cbind(1,dmat[,(j+2):(j+ord_w)]),x.n=cbind(1,dmat[,(j+2):(j+ord_w)]),tvar=dmat[,(j+2):(j+ord_w)],tvar.lag=0,contemp=F,ascending=T)
       }else{

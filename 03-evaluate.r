@@ -31,8 +31,6 @@ P <- n-R-h+1
 
 subset_dt$DATE[c(h+p+1,R)]
 
-# P <- dim(array_forecast)[3]
-
 c_num <- ncol(subset_dt)-1
 
 c_names <- names(subset_dt)[1:c_num]
@@ -493,7 +491,7 @@ gg_ratios <- ggplot(tab_lg,aes(x=Horizon,y=Ratio,color=Methods,linetype=Methods,
   theme(axis.title = element_text(size=10),axis.text.x=element_text(size=6,hjust=.8),axis.text.y=element_text(size=6),strip.text=element_text(size=6),strip.background=element_blank(),legend.position = "top",legend.title=element_blank())
 
 
-ggsave(paste("Paper/Forecasts",w_frac,".eps",sep=""),gg_ratios,width=6.5,height=6.5,units="in",device="eps")
-ggsave(paste("Paper/Forecasts",w_frac,".png",sep=""),gg_ratios,width=6.5,height=6.5,units="in",device="png")
-ggsave(paste("Presentation/Forecasts",w_frac,".png",sep=""),gg_ratios,width=6.5,height=4.5,units="in",device="png")
+# ggsave(paste("Paper/Forecasts",w_frac,".eps",sep=""),gg_ratios,width=6.5,height=6.5,units="in",device="eps")
+# ggsave(paste("Paper/Forecasts",w_frac,".png",sep=""),gg_ratios,width=6.5,height=6.5,units="in",device="png")
+# ggsave(paste("Presentation/Forecasts",w_frac,".png",sep=""),gg_ratios,width=6.5,height=4.5,units="in",device="png")
 

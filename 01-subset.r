@@ -8,12 +8,11 @@ library(urca)
 rm(list=ls())
 gc()
 
-# this function selects the autoregressive order based on the 'SIC rule' as follows: 
-# (1) find the order, p, based on SIC; 
-# (2) test for serial correlation in residuals;
-# (3) increase the order by 1, if the null of no serial correlation is rejected;
-# (4) repeat steps 2-3 until the autoregressive order, lag_opt, equals the predetermined maximum order, lag_max (in this case set to 12).
-
+# the following function selects the autoregressive order based on the 'SIC rule' as follows: 
+# (1) find the order, p (Schwarz Information Criterion); 
+# (2) test for serial correlation in residuals (Breusch-Godfrey test);
+# (3) increase the order by 1, if we reject the null of no serial correlation;
+# (4) repeat steps 2-3 until we fail to reject the null or if the autoregressive order, lag_opt, equals the predetermined maximum order, lag_max (set to 12).
 ar_order <- function(x,max_lag=12,method="SIC",bg=TRUE){
   ic_func <- function(i){# optimal lag based on (A/S)IC
     fmla <- as.formula(paste("x~",paste0("x",c(1:i),collapse="+")))
@@ -49,10 +48,10 @@ ar_order <- function(x,max_lag=12,method="SIC",bg=TRUE){
   return(p)
 }
 
-# load the function to test linearity agaonst star-type alternatives
+# load the function to test linearity against star-type alternatives
 source("startest.r")
 
-# load the data
+# load the price data
 load("dataset.RData")
 
 c.num <- ncol(prices_dt)-1
@@ -148,4 +147,3 @@ subset_dt <- prices_dt[,..cols]
 subset_dt$DATE <- prices_dt$DATE
 
 save(subset_dt,sub_dt,file="subset.RData")
-
